@@ -2,14 +2,14 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const assert = std.debug.assert;
 
-pub const Frame = struct {
-    seconds: u32,
-    microseconds: u32,
-    data: []const u8,
+fn makeTimestamp(s: u32, us: u32) u64 {
+    assert(us < std.time.us_per_s);
+    return std.math.mulWide(u32, s, std.time.us_per_s) + us;
+}
 
-    pub fn timeMicroseconds(self: Frame) u64 {
-        return std.math.mulWide(u32, self.seconds, std.time.us_per_s) + self.microseconds;
-    }
+pub const Frame = struct {
+    timestamp: u64,
+    data: []const u8,
 };
 
 pub fn parse(
@@ -22,6 +22,7 @@ pub fn parse(
 ) !void {
     var buffer = try std.ArrayList(u8).initCapacity(allocator, 1024 * 8);
     defer buffer.deinit();
+    var last_timestamp: u64 = 0;
     while (true) {
         {
             // get more bytes from the reader
@@ -42,9 +43,16 @@ pub fn parse(
             if (cursor.len < 12) break;
             const data_len = std.mem.readIntLittle(u32, cursor[8..12]);
             if (cursor.len - 12 < data_len) break;
+            const seconds = std.mem.readIntLittle(u32, cursor[0..4]);
+            const microseconds = std.mem.readIntLittle(u32, cursor[4..8]);
+            if (microseconds >= std.time.us_per_s)
+                return error.InvalidMicroseconds;
+            const timestamp = makeTimestamp(seconds, microseconds);
+            if (timestamp < last_timestamp)
+                return error.NonMonotonicTime;
+            last_timestamp = timestamp;
             try callback(ctx, Frame{
-                .seconds = std.mem.readIntLittle(u32, cursor[0..4]),
-                .microseconds = std.mem.readIntLittle(u32, cursor[4..8]),
+                .timestamp = timestamp,
                 .data = cursor[12..][0..data_len],
             });
             cursor = cursor[12..][data_len..];

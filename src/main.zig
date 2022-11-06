@@ -38,7 +38,7 @@ fn getFrameStats(alloc: Allocator, file: File) !void {
             self.n_frames += 1;
             self.total_size += frame.data.len;
             self.max_frame_size = std.math.max(self.max_frame_size, frame.data.len);
-            const time = frame.timeMicroseconds();
+            const time = frame.timestamp;
             self.min_time = std.math.min(self.min_time, time);
             self.max_time = std.math.max(self.max_time, time);
         }
