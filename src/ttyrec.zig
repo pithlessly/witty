@@ -2,13 +2,17 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const assert = std.debug.assert;
 
-const Frame = struct {
+pub const Frame = struct {
     seconds: u32,
     microseconds: u32,
     data: []const u8,
+
+    pub fn timeMicroseconds(self: Frame) u64 {
+        return std.math.mulWide(u32, self.seconds, std.time.us_per_s) + self.microseconds;
+    }
 };
 
-fn parse(
+pub fn parse(
     allocator: Allocator,
     reader: anytype,
     comptime Ctx: type,
