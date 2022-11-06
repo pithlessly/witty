@@ -49,7 +49,7 @@ pub fn parse(
             });
             cursor = cursor[12..][data_len..];
         }
-        // move the incomplete frames to the front of the buffer
+        // move the incomplete frame to the front of the buffer
         std.mem.copy(u8, buffer.items, cursor);
         buffer.shrinkRetainingCapacity(cursor.len);
     }
