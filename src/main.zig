@@ -3,24 +3,44 @@ const Allocator = std.mem.Allocator;
 const File = std.fs.File;
 
 const ttyrec = @import("ttyrec.zig");
+const Screen = @import("screen.zig").Screen;
+
+const CliSubcommand = enum { stat, play };
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const alloc = gpa.allocator();
 
-    const file = blk: {
+    var command: CliSubcommand = undefined;
+    var file: std.fs.File = undefined;
+    {
         const args = try std.process.argsAlloc(alloc);
         defer std.process.argsFree(alloc, args);
-        if (args.len != 2) {
+        var path: []const u8 = undefined;
+        if (args.len == 3) {
+            path = args[2];
+            const command_str = args[1];
+            if (std.mem.eql(u8, command_str, "stat")) {
+                command = .stat;
+            } else {
+                std.debug.print("Invalid subcommand: {s}.\n", .{command_str});
+                return;
+            }
+        } else if (args.len == 2) {
+            path = args[1];
+            command = .play;
+        } else {
             std.debug.print("Please provide a file name.\n", .{});
             return;
         }
-        const path = args[1];
-        break :blk try std.fs.cwd().openFile(path, .{});
-    };
+        file = try std.fs.cwd().openFile(path, .{});
+    }
     defer file.close();
-    try getFrameStats(alloc, file);
+    switch (command) {
+        .stat => try getFrameStats(alloc, file),
+        .play => try doPlayback(alloc, file),
+    }
 }
 
 fn getFrameStats(alloc: Allocator, file: File) !void {
@@ -65,6 +85,28 @@ fn getFrameStats(alloc: Allocator, file: File) !void {
     });
 }
 
+fn doPlayback(alloc: Allocator, file: File) !void {
+    const Ctx = struct {
+        screen: Screen = .{},
+        const Err = error{};
+        fn addFrame(self: *@This(), frame: ttyrec.Frame) Err!void {
+            for (frame.data) |b|
+                self.screen = self.screen.update(b);
+        }
+    };
+    var ctx = Ctx{};
+    try ttyrec.parse(alloc, file.reader(), *Ctx, Ctx.Err, &ctx, Ctx.addFrame);
+    for (ctx.screen.rows) |row| {
+        var content = row;
+        for (content) |*b| {
+            if (' ' <= b.* and b.* <= 127) continue;
+            b.* = '%';
+        }
+        std.debug.print("|{s}|\n", .{content});
+    }
+}
+
 test "compilation" {
     _ = ttyrec;
+    _ = Screen;
 }
