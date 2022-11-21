@@ -1,0 +1,5 @@
+id: tth4sy02cbog8ay4ivbj3rdd9ol0jex8lhxfhyme8eybyzyw
+name: witty
+main: src/main.zig
+description: Core code for ttyrec parsing and playback
+dependencies:
