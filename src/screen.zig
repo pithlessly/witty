@@ -42,7 +42,7 @@ pub const Screen = struct {
 
 test "screen update" {
     var screen = Screen{};
-    for ("abc\n12345") |b|
+    for ("abc\r\n12345") |b|
         screen = screen.update(b);
     assert(std.mem.eql(u8, screen.rows[0][0..4], "abc "));
     assert(std.mem.eql(u8, screen.rows[1][0..6], "12345 "));
