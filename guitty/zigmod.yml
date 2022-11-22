@@ -1,0 +1,5 @@
+id: lj55qfylj3fledt9jqfw5mla5q6pocgxs7kd1vbr8leglh8r
+name: guitty
+description: SDL2 frontend for witty
+root_dependencies:
+  - src: local witty ../src/main.zig
