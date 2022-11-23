@@ -12,6 +12,12 @@ pub const Frame = struct {
     data: []const u8,
 };
 
+pub const ParseError = error{
+    IncompleteFrame,
+    InvalidMicroseconds,
+    NonMonotonicTime,
+};
+
 pub fn parse(
     allocator: Allocator,
     reader: anytype,
