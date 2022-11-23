@@ -3,3 +3,5 @@ name: guitty
 description: SDL2 frontend for witty
 root_dependencies:
   - src: local witty ../src/main.zig
+  - src: system_lib sdl2
+  - src: system_lib c
