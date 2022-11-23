@@ -77,10 +77,12 @@ fn getFrameStats(alloc: Allocator, file: File) !void {
     var ctx = Ctx{};
     try witty.ttyrec.parse(alloc, file.reader(), *Ctx, Ctx.Err, &ctx, Ctx.addFrame);
     try std.io.getStdOut().writer().print(
-        \\# frames:      {}
-        \\average frame: {d:.2} bytes
-        \\largest frame: {} bytes
-        \\duration:      {d:.3} s
+        \\{{
+        \\  "num_frames": {},
+        \\  "avg_frame":  {d:.2},
+        \\  "max_frame":  {},
+        \\  "duration":   {d:.3}
+        \\}}
         \\
     , .{
         ctx.n_frames,
