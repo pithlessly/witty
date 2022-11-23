@@ -91,3 +91,7 @@ fn getFrameStats(alloc: Allocator, file: File) !void {
         @intToFloat(f64, ctx.duration()) / 1000000.0,
     });
 }
+
+test "compilation" {
+    std.testing.refAllDecls(@This());
+}
