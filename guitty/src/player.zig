@@ -114,6 +114,34 @@ pub fn play(alloc: Allocator, file: File) !void {
         return error.SDLInitializationFailed;
     };
     defer c.SDL_DestroyWindow(win);
+
+    c.SDL_SetWindowResizable(win, c.SDL_TRUE);
+
+    const renderer = c.SDL_CreateRenderer(
+        win,
+        -1, // automatically choose rendering driver
+        0, // no flags
+    ) orelse {
+        std.log.err("Unable to create renderer: {s}", .{getSdlError()});
+        return error.SDLInitializationFailed;
+    };
+    defer c.SDL_DestroyRenderer(renderer);
+
+    var quit = false;
+    while (!quit) {
+        var event: c.SDL_Event = undefined;
+        while (c.SDL_PollEvent(&event) != 0) {
+            switch (event.@"type") {
+                c.SDL_QUIT => quit = true,
+                else => {},
+            }
+        }
+
+        c.SDL_RenderPresent(renderer);
+        c.SDL_Delay(17);
+    }
+
+    std.debug.print("frames: {}\n", .{readerStatus.initializedFrames().len});
 }
 
 test "compilation" {
