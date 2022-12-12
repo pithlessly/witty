@@ -11,6 +11,8 @@ const assert = std.debug.assert;
 const Allocator = std.mem.Allocator;
 const File = std.fs.File;
 
+const progress_bar = @import("progress_bar.zig");
+
 fn getSdlError() [*:0]const u8 {
     return @ptrCast([*:0]const u8, c.SDL_GetError());
 }
@@ -98,8 +100,6 @@ pub fn play(alloc: Allocator, file: File) !void {
 }
 
 fn guiThread(reader_status: *const ReaderStatus, alloc: Allocator) !void {
-    _ = alloc;
-
     if (c.SDL_Init(c.SDL_INIT_VIDEO) != 0) {
         std.log.err("SDL initialization failed: {s}", .{getSdlError()});
         return error.SDLInitializationFailed;
@@ -133,6 +133,9 @@ fn guiThread(reader_status: *const ReaderStatus, alloc: Allocator) !void {
     };
     defer c.SDL_DestroyRenderer(renderer);
 
+    var pb = progress_bar.State.init(alloc);
+    defer pb.deinit();
+
     var quit = false;
     var mouse_x: i32 = 0;
     var mouse_y: i32 = 0;
@@ -152,6 +155,11 @@ fn guiThread(reader_status: *const ReaderStatus, alloc: Allocator) !void {
         var width: u31 = undefined;
         var height: u31 = undefined;
         try getWindowSize(renderer, &width, &height);
+
+        _ = c.SDL_SetRenderDrawColor(renderer, 0xC0, 0xC0, 0xC0, 0xFF);
+        _ = c.SDL_RenderClear(renderer);
+
+        try progress_bar.draw(&pb, renderer, width, height, reader_status.initializedFrames());
 
         c.SDL_RenderPresent(renderer);
         c.SDL_Delay(17);
