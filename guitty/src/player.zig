@@ -75,11 +75,11 @@ fn readerThread(status: *ReaderStatus, alloc: Allocator, file: File) void {
         alloc: Allocator,
         const Err = Allocator.Error;
         fn addFrame(self: @This(), frame: Frame) Err!void {
-            const ownedFrame = Frame{
+            const owned_frame = Frame{
                 .timestamp = frame.timestamp,
                 .data = try self.alloc.dupe(u8, frame.data),
             };
-            self.status.addOwnedFrame(ownedFrame);
+            self.status.addOwnedFrame(owned_frame);
         }
     };
     const ctx = .{ .status = status, .alloc = alloc };
@@ -88,11 +88,12 @@ fn readerThread(status: *ReaderStatus, alloc: Allocator, file: File) void {
 }
 
 pub fn play(alloc: Allocator, file: File) !void {
-    const readerStatus = try ReaderStatus.init(alloc);
-    defer readerStatus.deinitAndFree(alloc);
+    const reader_status = try ReaderStatus.init(alloc);
+    defer reader_status.deinitAndFree(alloc);
 
-    const readerTh = try std.Thread.spawn(.{}, readerThread, .{ readerStatus, alloc, file });
-    defer readerTh.join();
+    const reader_th = try std.Thread.spawn(.{}, readerThread, .{ reader_status, alloc, file });
+    defer reader_th.join();
+
 
     if (c.SDL_Init(c.SDL_INIT_VIDEO) != 0) {
         std.log.err("SDL initialization failed: {s}", .{getSdlError()});
@@ -141,7 +142,7 @@ pub fn play(alloc: Allocator, file: File) !void {
         c.SDL_Delay(17);
     }
 
-    std.debug.print("frames: {}\n", .{readerStatus.initializedFrames().len});
+    std.debug.print("frames: {}\n", .{reader_status.initializedFrames().len});
 }
 
 test "compilation" {
