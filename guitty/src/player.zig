@@ -149,11 +149,32 @@ fn guiThread(reader_status: *const ReaderStatus, alloc: Allocator) !void {
             }
         }
 
+        var width: u31 = undefined;
+        var height: u31 = undefined;
+        try getWindowSize(renderer, &width, &height);
+
         c.SDL_RenderPresent(renderer);
         c.SDL_Delay(17);
     }
 
     std.debug.print("frames: {}\n", .{reader_status.initializedFrames().len});
+}
+
+fn getWindowSize(renderer: *c.SDL_Renderer, w: *u31, h: *u31) !void {
+    var c_w: c_int = undefined;
+    var c_h: c_int = undefined;
+    if (c.SDL_GetRendererOutputSize(renderer, &c_w, &c_h) != 0) {
+        std.log.err("Unable to get draw size: {s}", .{getSdlError()});
+        return error.SDLFailure;
+    }
+    w.* = std.math.cast(u31, c_w) orelse {
+        std.log.err("SDL returned impossible window width: {}", .{c_w});
+        return error.SDLFailure;
+    };
+    h.* = std.math.cast(u31, c_h) orelse {
+        std.log.err("SDL returned impossible window height: {}", .{c_h});
+        return error.SDLFailure;
+    };
 }
 
 test "compilation" {
