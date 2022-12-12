@@ -94,6 +94,11 @@ pub fn play(alloc: Allocator, file: File) !void {
     const reader_th = try std.Thread.spawn(.{}, readerThread, .{ reader_status, alloc, file });
     defer reader_th.join();
 
+    try guiThread(reader_status, alloc);
+}
+
+fn guiThread(reader_status: *const ReaderStatus, alloc: Allocator) !void {
+    _ = alloc;
 
     if (c.SDL_Init(c.SDL_INIT_VIDEO) != 0) {
         std.log.err("SDL initialization failed: {s}", .{getSdlError()});
