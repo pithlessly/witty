@@ -134,11 +134,17 @@ fn guiThread(reader_status: *const ReaderStatus, alloc: Allocator) !void {
     defer c.SDL_DestroyRenderer(renderer);
 
     var quit = false;
+    var mouse_x: i32 = 0;
+    var mouse_y: i32 = 0;
     while (!quit) {
         var event: c.SDL_Event = undefined;
         while (c.SDL_PollEvent(&event) != 0) {
             switch (event.@"type") {
                 c.SDL_QUIT => quit = true,
+                c.SDL_MOUSEMOTION => {
+                    mouse_x = event.motion.x;
+                    mouse_y = event.motion.y;
+                },
                 else => {},
             }
         }
