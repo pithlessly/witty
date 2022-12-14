@@ -40,75 +40,46 @@ pub fn draw(
     // draw tick ranges
     if (frames.len == 0) return;
     _ = c.SDL_SetRenderDrawColor(renderer, 0xA0, 0xA0, 0xA0, 0xFF);
-    var iterator = try pb.updateWithFrames(bar_width, frames);
-    while (iterator.next()) |range| {
-        _ = c.SDL_RenderFillRect(renderer, &c.SDL_Rect{
-            .x = padding + range.start,
-            .y = bar_y,
-            .w = range.end - range.start,
-            .h = bar_height,
-        });
-    }
+    const iterator = try pb.updateWithFrames(bar_width, frames);
+    iterator.iterate(struct {
+        renderer: *c.SDL_Renderer,
+        padding: c_int,
+        bar_y: c_int,
+        bar_height: c_int,
+        fn call(s: @This(), range: PixelRange) void {
+            _ = c.SDL_RenderFillRect(s.renderer, &c.SDL_Rect{
+                .x = s.padding + range.start,
+                .y = s.bar_y,
+                .w = range.end - range.start,
+                .h = s.bar_height,
+            });
+        }
+    }{ .renderer = renderer, .padding = padding, .bar_y = bar_y, .bar_height = bar_height });
 }
 
-const PixelRange = struct {
-    start: i32,
-    end: i32,
-    fn overlaps(r1: PixelRange, r2: PixelRange) bool {
-        assert(r1.start <= r2.start);
-        assert(r1.end <= r2.end);
-        return r2.start <= r1.end;
-    }
-};
-
-const TickRange = struct {
-    start: f64,
-    end: f64,
-
-    fn fromFrame(f: Frame, min_time: u64) TickRange {
-        const t = float(f.timestamp - min_time);
-        return .{ .start = t, .end = t };
-    }
-
-    fn pixelRange(self: TickRange, time_range: f64, bar_width: f64) PixelRange {
-        const sta = @floatToInt(i32, @round((bar_width / time_range) * self.start));
-        const end = @floatToInt(i32, @round((bar_width / time_range) * self.end));
-        return .{
-            .start = sta - tick_radius,
-            .end = end + tick_radius,
-        };
-    }
-
-    fn coalesce(t1: TickRange, t2: TickRange, time_range: f64, bar_width: f64) ?TickRange {
-        assert(t1.start <= t2.start);
-        assert(t1.end <= t2.end);
-        const r1 = t1.pixelRange(time_range, bar_width);
-        const r2 = t2.pixelRange(time_range, bar_width);
-        return if (r1.overlaps(r2))
-            TickRange{
-                .start = t1.start,
-                .end = t2.end,
-            }
-        else
-            null;
-    }
+const FrameBranch = struct {
+    const Ref = packed struct {
+        kind: enum(u1) { frame, branch },
+        index: u31,
+    };
+    lhs: Ref,
+    rhs: Ref,
+    separation: u64,
 };
 
 pub const State = struct {
-    prev_bar_width: u31,
-    prev_num_frames: usize,
-    tick_ranges: std.ArrayList(TickRange),
+    branches: std.ArrayList(FrameBranch),
+    root: ?FrameBranch.Ref,
 
     pub fn init(alloc: Allocator) State {
         return .{
-            .prev_bar_width = std.math.maxInt(u31),
-            .prev_num_frames = 0,
-            .tick_ranges = std.ArrayList(TickRange).init(alloc),
+            .branches = std.ArrayList(FrameBranch).init(alloc),
+            .root = null,
         };
     }
 
     pub fn deinit(self: State) void {
-        self.tick_ranges.deinit();
+        self.branches.deinit();
     }
 
     fn updateWithFrames(self: *State, bar_width: u31, frames: []const Frame) !PixelRangeIterator {
@@ -117,87 +88,130 @@ pub const State = struct {
         const max_time = frames[frames.len - 1].timestamp;
         const time_range = float(std.math.max(1, max_time - min_time));
 
-        const bar_width_float = float(bar_width);
-
-        if (bar_width > self.prev_bar_width) {
-            std.log.info("progress bar width increased; invalidating tick ranges", .{});
-            // this will cause all frames to be reprocessed in the loop below
-            self.tick_ranges.clearRetainingCapacity();
-            self.prev_num_frames = 0;
-        } else if (bar_width < self.prev_bar_width) {
-            self.recoalesce(time_range, bar_width_float);
+        // if the tree is empty, replace it with a single leaf
+        // pointing to the first frame
+        if (self.root == null) {
+            self.root = FrameBranch.Ref{ .kind = .frame, .index = 0 };
         }
-        self.prev_bar_width = bar_width;
 
-        if (frames.len > self.prev_num_frames) {
-            // add these frames to the range list, coalescing as necessary
-            self.recoalesce(time_range, bar_width_float);
-            const new_frames = frames[self.prev_num_frames..];
-            try self.addFramesCoalescing(new_frames, min_time, time_range, bar_width_float);
-        }
-        self.prev_num_frames = frames.len;
+        // each frame is a leaf of the tree, and a binary tree
+        // with N+1 leaves always has N branches
+        const known_frames = self.branches.items.len + 1;
+        assert(known_frames <= frames.len);
 
-        return PixelRangeIterator.init(self.tick_ranges.items, time_range, bar_width_float);
-    }
-
-    fn recoalesce(self: *State, time_range: f64, bar_width: f64) void {
-        const tick_ranges = self.tick_ranges.items;
-        if (tick_ranges.len == 0) return;
-        var current_idx: usize = 0;
-        var num_coalesced: usize = 0;
-        for (tick_ranges[1..]) |next_range| {
-            var current_range = &tick_ranges[current_idx];
-            if (current_range.coalesce(next_range, time_range, bar_width)) |coalesced| {
-                num_coalesced += 1;
-                current_range.* = coalesced;
-            } else {
-                current_idx += 1;
-                tick_ranges[current_idx] = next_range;
+        // if there were any *more* frames added beyond the first one,
+        // we need to extend the three to account for them, one per branch
+        if (frames.len > known_frames) {
+            try self.branches.ensureUnusedCapacity(frames.len - known_frames);
+            var idx = known_frames;
+            while (idx < frames.len) : (idx += 1) {
+                const separation = frames[idx].timestamp - frames[idx - 1].timestamp;
+                self.branches.appendAssumeCapacity(addFrameToSubtree(
+                    self.branches.items,
+                    &self.root.?,
+                    separation,
+                    @intCast(u31, idx),
+                ));
             }
         }
-        self.tick_ranges.shrinkRetainingCapacity(current_idx + 1);
-        if (num_coalesced > 0)
-            std.log.info("coalesced ranges ({})", .{num_coalesced});
+
+        return PixelRangeIterator{
+            .branches = self.branches.items,
+            .frames = frames,
+            .root = self.root.?,
+            .min_time = float(min_time),
+            .px_per_us = float(bar_width) / time_range,
+        };
     }
 
-    fn addFramesCoalescing(self: *State, frames: []const Frame, min_time: u64, time_range: f64, bar_width: f64) !void {
-        var current_range_opt = self.tick_ranges.popOrNull();
-        for (frames) |frame| {
-            const next_range = TickRange.fromFrame(frame, min_time);
-            if (current_range_opt) |current_range| {
-                if (current_range.coalesce(next_range, time_range, bar_width)) |coalesced| {
-                    current_range_opt = coalesced;
-                } else {
-                    try self.tick_ranges.append(current_range);
-                    current_range_opt = next_range;
-                }
-            } else {
-                current_range_opt = next_range;
-            }
+    fn addFrameToSubtree(
+        branches: []FrameBranch,
+        root: *FrameBranch.Ref,
+        separation: u64,
+        new_frame_idx: u31,
+    ) FrameBranch {
+        if (root.kind == .branch and
+            separation < branches[root.index].separation)
+        {
+            // recursively add the new frame to the right child
+            const sub_root = &branches[root.index].rhs;
+            return addFrameToSubtree(branches, sub_root, separation, new_frame_idx);
+        } else {
+            // make the newly created branch into the root of this subtree.
+            // the current subtree is moved into the left child of the branch,
+            // and the right child of the branch is a leaf for the new frame
+            const new_branch_idx = @intCast(u31, branches.len);
+            defer root.* = .{ .kind = .branch, .index = new_branch_idx };
+            return .{
+                .lhs = root.*,
+                .rhs = .{ .kind = .frame, .index = new_frame_idx },
+                .separation = separation,
+            };
         }
-        if (current_range_opt) |range|
-            try self.tick_ranges.append(range);
+    }
+};
+
+const PixelRange = struct {
+    start: i32,
+    end: i32,
+
+    fn fromTimestamps(t1: u64, t2: u64, min_time: f64, px_per_us: f64) PixelRange {
+        const px1 = @round((float(t1) - min_time) * px_per_us);
+        const px2 = @round((float(t2) - min_time) * px_per_us);
+        return .{
+            .start = @floatToInt(i32, px1) - tick_radius,
+            .end = @floatToInt(i32, px2) + tick_radius,
+        };
     }
 };
 
 const PixelRangeIterator = struct {
-    pos: [*]const TickRange,
-    end: [*]const TickRange,
-    time_range: f64,
-    bar_width: f64,
+    branches: []const FrameBranch,
+    frames: []const Frame,
+    root: FrameBranch.Ref,
+    min_time: f64,
+    px_per_us: f64,
 
-    fn init(ranges: []const TickRange, time_range: f64, bar_width: f64) PixelRangeIterator {
-        return .{
-            .pos = ranges.ptr,
-            .end = ranges.ptr + ranges.len,
-            .time_range = time_range,
-            .bar_width = bar_width,
+    fn iterate(self: PixelRangeIterator, callback: anytype) void {
+        self.visitNode(self.root, callback);
+    }
+
+    fn visitNode(self: PixelRangeIterator, node: FrameBranch.Ref, callback: anytype) void {
+        switch (node.kind) {
+            .frame => {
+                const ts = self.frames[node.index].timestamp;
+                callback.call(PixelRange.fromTimestamps(ts, ts, self.min_time, self.px_per_us));
+            },
+            .branch => {
+                const branch = self.branches[node.index];
+                if (float(branch.separation) * self.px_per_us < 2 * tick_radius) {
+                    callback.call(PixelRange.fromTimestamps(
+                        self.frames[branchStartFrame(branch, self.branches)].timestamp,
+                        self.frames[branchEndFrame(branch, self.branches)].timestamp,
+                        self.min_time,
+                        self.px_per_us,
+                    ));
+                } else {
+                    visitNode(self, branch.lhs, callback);
+                    visitNode(self, branch.rhs, callback);
+                }
+            },
+        }
+    }
+
+    fn branchStartFrame(branch: FrameBranch, branches: []const FrameBranch) u31 {
+        var b = branch;
+        while (true) switch (b.lhs.kind) {
+            .frame => return b.lhs.index,
+            .branch => b = branches[b.lhs.index],
         };
     }
 
-    fn next(self: *PixelRangeIterator) ?PixelRange {
-        if (self.pos == self.end) return null;
-        defer self.pos += 1;
-        return self.pos[0].pixelRange(self.time_range, self.bar_width);
+    fn branchEndFrame(branch: FrameBranch, branches: []const FrameBranch) u31 {
+        var b = branch;
+        while (true) switch (b.rhs.kind) {
+            .frame => return b.rhs.index,
+            .branch => b = branches[b.rhs.index],
+        };
     }
 };
