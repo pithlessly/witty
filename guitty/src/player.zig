@@ -126,7 +126,7 @@ fn guiThread(reader_status: *const ReaderStatus, alloc: Allocator) !void {
     const renderer = c.SDL_CreateRenderer(
         win,
         -1, // automatically choose rendering driver
-        0, // no flags
+        c.SDL_RENDERER_ACCELERATED,
     ) orelse {
         std.log.err("Unable to create renderer: {s}", .{getSdlError()});
         return error.SDLInitializationFailed;
