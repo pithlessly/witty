@@ -1,13 +1,10 @@
-const c = @cImport({
-    @cInclude("SDL.h");
-});
-
 const witty = @import("witty");
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const File = std.fs.File;
 
+const c = @import("c.zig");
 const player = @import("player.zig");
 
 const CliSubcommand = enum { stat, play };

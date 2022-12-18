@@ -1,8 +1,3 @@
-const c = @cImport({
-    @cInclude("SDL.h");
-    @cInclude("SDL_ttf.h");
-});
-
 const witty = @import("witty");
 const Frame = witty.ttyrec.Frame;
 
@@ -12,6 +7,7 @@ const assert = std.debug.assert;
 const Allocator = std.mem.Allocator;
 const File = std.fs.File;
 
+const c = @import("c.zig");
 const progress_bar = @import("progress_bar.zig");
 
 fn getSdlError() [*:0]const u8 {

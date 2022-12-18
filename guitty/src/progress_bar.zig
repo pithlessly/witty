@@ -1,13 +1,10 @@
-const c = @cImport({
-    @cInclude("SDL.h");
-    @cInclude("SDL_ttf.h");
-});
-
 const Frame = @import("witty").ttyrec.Frame;
 
 const std = @import("std");
 const assert = std.debug.assert;
 const Allocator = std.mem.Allocator;
+
+const c = @import("c.zig");
 
 fn float(x: anytype) f64 {
     return @intToFloat(f64, x);
