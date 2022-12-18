@@ -1,5 +1,6 @@
 const c = @cImport({
     @cInclude("SDL.h");
+    @cInclude("SDL_ttf.h");
 });
 
 const Frame = @import("witty").ttyrec.Frame;

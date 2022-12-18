@@ -1,5 +1,6 @@
 const c = @cImport({
     @cInclude("SDL.h");
+    @cInclude("SDL_ttf.h");
 });
 
 const witty = @import("witty");
@@ -105,6 +106,27 @@ fn guiThread(reader_status: *const ReaderStatus, alloc: Allocator) !void {
         return error.SDLInitializationFailed;
     }
     defer c.SDL_Quit();
+
+    if (c.TTF_Init() != 0) {
+        std.log.err("SDL_ttf initialization failed: {s}", .{getSdlError()});
+        return error.SDLInitializationFailed;
+    }
+    defer c.TTF_Quit();
+
+    const sans_ttf_data = @embedFile("fonts/DejaVuSans-2.37.ttf");
+    const sans_stream = c.SDL_RWFromConstMem(sans_ttf_data, sans_ttf_data.len) orelse {
+        std.log.err("Unable to create RWops for font: {s}", .{getSdlError()});
+        return error.SDLInitializationFailed;
+    };
+    const sans_font = c.TTF_OpenFontRW(
+        sans_stream,
+        1, // tell SDL to free the stream after reading it
+        16, // font size
+    ) orelse {
+        std.log.err("Unable to open font: {s}", .{getSdlError()});
+        return error.SDLInitializationFailed;
+    };
+    defer c.TTF_CloseFont(sans_font);
 
     const win_width = 500;
     const win_height = 500;
